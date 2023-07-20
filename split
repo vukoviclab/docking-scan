@@ -1,0 +1,111 @@
+#!/bin/bash
+
+function process_affinity() {
+
+    local vina_var_split=vina_split
+    local receptor="protein.pdbqt"
+    local energy_range=-1.0
+    local TEMP=$(getopt -o hr:n:e:v: --long help,receptor:,number:,energy-range:,vina-path: -n 'process_affinity' -- "$@")
+
+    if [ $? != 0 ] ; then echo "Terminating..." >&2 ; exit 1 ; fi
+
+    # Note the quotes around `$TEMP': they are essential!
+    eval set -- "$TEMP"
+
+    while true ; do
+        case "$1" in
+            -r|--receptor) local receptor_pdbqt=$2 ; shift 2 ;;
+            -n|--number) local number=$2 ; shift 2 ;;
+            -e|--energy-range) local energy_range=$2 ; shift 2 ;;
+            -v|--vina-path) vina_var_split=$2 ; shift 2 ;;
+            -h|--help) 
+               echo -e "\nThe script was written by 'Payam Kelich' https://payamkelich.github.io/\
+                \n\
+                \nUsage: $0 [--receptor receptor_pdbqt] [--number number] [--energy-range energy_range] [--vina-path vina_var_split]
+                \n\
+                \nInput:
+                \nOptions(-short|--long)       Action
+                \n--------------------------------------------------------------------
+                \n -r|--receptor    :          Path to the receptor PDBQT file
+                \n -n|--number      :          The seed number
+                \n -e|--energy-range:          Energy range value
+                \n -v|--vina-path   :          Path to the vina_split binary
+                \n -h|--help        :          Display this help message
+                \n\
+                \nThis script processes the affinity data and generates structure files for each ligand."
+                exit 0 ; shift ;;
+            --) shift ; break ;;
+            *) echo "Internal error!" ; exit 1 ;;
+        esac
+    done
+
+    # Check if vina_split is installed
+    if [ ! -x "$(command -v $vina_var_split)" ]; then
+        echo "Error: vina_split is not installed or the specified path is not executable." >&2
+        exit 1
+    fi
+
+    # Extract the number from the directory name
+
+    local csv_file=affinity_seed_$number.csv
+    local directory=result_seed_$number
+    # Form the new directory name
+    local new_directory="structures_$number"
+    rm -r "$new_directory"	
+
+    mkdir -p "$new_directory"
+    mkdir -p "$new_directory/ligand"
+    mkdir -p "$new_directory/final"
+
+
+    local var=$(wc -l < "$csv_file")
+
+    sed -i '/^TER/d' "$receptor_pdbqt"
+    cut -c1-60 "$receptor_pdbqt" > .tmp_pro
+    
+    cp .tmp_pro merged_$number.pdb
+
+    # Start the loop from line number 2 to ignore the first line of the csv file
+    for (( c=2; c<=$var; c++ ))
+    do
+        local energ=$(cut -d ',' -f 4 "$csv_file" | sed -n ${c}p)
+
+        if [[ -z "$energ" ]]; then
+            echo "energ is empty, please check your csv file."
+            continue
+        fi
+
+        local comparison_result=$(echo "$energy_range > $energ" | bc -l)
+
+        if [[ -z "$comparison_result" ]]; then
+            echo "comparison_result is empty, please check your numbers."
+            continue
+        fi
+
+        if [[ "$comparison_result" -eq 1 ]]; then
+            local x=$(cut -d ',' -f 1 "$csv_file" | sed -n ${c}p)
+            local y=$(cut -d ',' -f 2 "$csv_file" | sed -n ${c}p)
+            local z=$(cut -d ',' -f 3 "$csv_file" | sed -n ${c}p)
+
+
+
+            $vina_var_split --input ./$directory/pdbqt-$x-$y-$z.pdbqt 
+
+            cut -c1-60 ./$directory/pdbqt-$x-$y-$z\_ligand_01.pdbqt | grep HETATM > .tmp1
+            awk -v num=$energ -v counter=$c '{printf "%-6s%5s %-4s%1s%3s %1s%4s    %8.3f%8.3f%8.3f%6.2f%6.2f\n", $1, $2, $3, "", "UUU", "X", counter, $5, $6, $7, $10, num}' .tmp1 > .tmp2
+            paste -d " " .tmp2 > lig-$x-$y-$z.pdb
+            cat lig-$x-$y-$z.pdb >> merged_$number.pdb
+            echo "END" >> lig-$x-$y-$z.pdb
+            cat .tmp_pro >> final-$x-$y-$z.pdb
+            cat lig-$x-$y-$z.pdb >> final-$x-$y-$z.pdb
+            mv lig-$x-$y-$z.pdb "$new_directory/ligand"/
+            mv final-$x-$y-$z.pdb "$new_directory/final"/
+        fi
+    done
+	echo "END" >> merged_$number.pdb
+        rm .tmp1 .tmp2 .tmp_pro
+}
+
+# Call the function with command-line arguments
+process_affinity "$@"
+

@@ -1,0 +1,117 @@
+#!/bin/bash
+
+function display_help() {
+    echo -e "\nThe script was written by 'Payam Kelich' https://payamkelich.github.io/\
+                \n\
+                \nUsage: $0 [-r receptor] [-l ligand] [-b box_size]\
+                \n\
+                \nInput:
+                \nOptions(-short|--long)       Action
+                \n--------------------------------------------------------------------
+                \n -r|--receptor:              receptor PDBQT file name (default: protein.pdbqt)\
+                \n -l|--ligand  :              ligand PDBQT file name (default: ligand.pdbqt)\
+                \n -b|--box     :              box size (default: 10)\
+                \n -x|--start-x :              start x (default: -5)\
+                \n -X|--end-x   :              end x (default: 5)\
+                \n NA|--step-x  :              step x (default: 5)\
+                \n -y|--start-y :              start y (default: -5)\
+                \n -Y|--end-y   :              end y (default: 5)\
+                \n NA|--step-y  :              step y (default: 5)\
+                \n -z|--start-z :              start z (default: -5)\
+                \n -Z|--end-z   :              end z (default: 5)\
+                \n NA|--step-z  :              step z (default: 5)\
+                \n NA|--fixed-x :              fixed x-coordinate (default: -5)\
+                \n NA|--fixed-y :              fixed y-coordinate (default: -5)\
+                \n NA|--fixed-z :              fixed z-coordinate (default: -5)\
+                \n -v|--vina-path:             Path to AutoDock Vina binary"
+}
+
+function run_vina() {
+    local vina_path="vina" # default vina path is assumed to be in PATH
+    local receptor="protein.pdbqt" # the protein PDBQT name
+    local ligand="ligand.pdbqt" # the ligand PDBQT name
+    local box_size=10 # the box size
+    local start_x=-5
+    local end_x=5
+    local step_x=5
+    local start_y=-5
+    local end_y=5
+    local step_y=5
+    local start_z=-5
+    local end_z=5
+    local step_z=5
+    local fixed_x=true
+    local fixed_y=true
+    local fixed_z=true
+    local seed=$(od -An -N2 -i /dev/urandom | awk -v f=0 -v r=999999999 '{if ($1 < f) $1=f; if ($1 > r) $1=r; printf "%i\n", $1}')
+
+    local TEMP=$(getopt -o hr:l:b:x:X:y:Y:z:Z:S:v: --long help,receptor:,ligand:,box:,start-x:,end-x:,step-x:,start-y:,end-y:,step-y:,start-z:,end-z:,step-z:,fixed-x:,fixed-y:,fixed-z:,seed:,vina-path: -n 'vinasc' -- "$@")
+
+    if [ $? != 0 ] ; then echo "Terminating..." >&2 ; exit 1 ; fi
+
+    # Note the quotes around `$TEMP': they are essential!
+    eval set -- "$TEMP"
+
+    while true ; do
+        case "$1" in
+            -r|--receptor) receptor=$2 ; shift 2 ;;
+            -l|--ligand) ligand=$2 ; shift 2 ;;
+            -b|--box) box_size=$2 ; shift 2 ;;
+            -x|--start-x) start_x=$2 ; shift 2 ;;
+            -X|--end-x) end_x=$2 ; shift 2 ;;
+            --step-x) step_x=$2 ; shift 2 ;;
+            -y|--start-y) start_y=$2 ; shift 2 ;;
+            -Y|--end-y) end_y=$2 ; shift 2 ;;
+            --step-y) step_y=$2 ; shift 2 ;;
+            -z|--start-z) start_z=$2 ; shift 2 ;;
+            -Z|--end-z) end_z=$2 ; shift 2 ;;
+            --step-z) step_z=$2 ; shift 2 ;;
+            --fixed-x) fixed_x=false; start_x=$2; end_x=$2; shift 2 ;;
+            --fixed-y) fixed_y=false; start_y=$2; end_y=$2; shift 2 ;;
+            --fixed-z) fixed_z=false; start_z=$2; end_z=$2; shift 2 ;;
+            -S|--seed) seed=$2 ; shift 2 ;;
+            -v|--vina-path) vina_path=$2 ; shift 2 ;;
+            -h|--help) display_help ; exit 0 ; shift ;;
+            --) shift ; break ;;
+            *) echo "Internal error!" ; exit 1 ;;
+        esac
+    done
+
+    # Check if Vina is installed at the provided path
+    if ! command -v $vina_path >/dev/null 2>&1; then
+        echo "AutoDock Vina is not installed or not in the PATH. Please install it first or define the PATH."
+        return 1
+    fi
+
+    mkdir -p result_seed_$seed
+    echo "X,Y,Z,Affinity (kcal/mol)" >> affinity_seed_$seed.csv
+	
+    for x in $(seq $start_x $step_x $end_x)
+    do
+        for y in $(seq $start_y $step_y $end_y)
+        do
+            for z in $(seq $start_z $step_z $end_z)
+            do
+                echo "receptor = $receptor 
+                ligand = $ligand
+                center_x = $(echo $x)
+                center_y = $(echo $y)
+                center_z = $(echo $z)
+                size_x = $box_size
+                size_y = $box_size
+                size_z = $box_size" >> conf-$x-$y-$z
+
+                $vina_path --config conf-$x-$y-$z --num_modes 100 --energy_range 3 --cpu 8 --out pdbqt-$x-$y-$z.pdbqt --log log-$x-$y-$z.log --seed $seed
+                echo "$(echo $x),$(echo $y),$(echo $z),$(grep -m 1 '^   1' log-$x-$y-$z.log | awk '{print $2}')">> affinity_seed_$seed.csv
+
+                mv conf-$x-$y-$z result_seed_$seed
+                mv pdbqt-$x-$y-$z.pdbqt result_seed_$seed
+                mv log-$x-$y-$z.log result_seed_$seed
+                
+            done    
+        done
+    done
+}
+
+run_vina "$@"
+
