@@ -23,6 +23,7 @@ function display_help() {
                 \n NA|--fixed-x :              fixed x-coordinate (default: -5)\
                 \n NA|--fixed-y :              fixed y-coordinate (default: -5)\
                 \n NA|--fixed-z :              fixed z-coordinate (default: -5)\
+                \n -S|--seed :                 a seed number for running vina (default: randomly generated )\
                 \n -v|--vina-path:             Path to AutoDock Vina binary"
 }
 
