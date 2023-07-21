@@ -170,7 +170,7 @@ Running this command will generate two types of outputs:
 
     - **ligand**: This directory holds the highest affinity docked structure alone for each coordinate.
     - **final**: This directory stores the highest affinity docked structure alongside the target receptor for each coordinate.
--A PDB file named **merged_1234.pdb** is also generated. It contains all the ligand structures with different **segID**. The final column in the PDB file holds the affinity energy, placed in the occupancy column for visualization using [VMD](ks.uiuc.edu/Development/Download/download.cgi?PackageName=VMD) or [ChimeraX](https://www.cgl.ucsf.edu/chimera/download.html) software.
+- A PDB file named **merged_1234.pdb** is also generated. It contains all the ligand structures with different **segID**. The final column in the PDB file holds the affinity energy, placed in the occupancy column for visualization using [VMD](ks.uiuc.edu/Development/Download/download.cgi?PackageName=VMD) or [ChimeraX](https://www.cgl.ucsf.edu/chimera/download.html) software.
 
 
 ## Contact
